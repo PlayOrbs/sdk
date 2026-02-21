@@ -1,0 +1,60 @@
+{
+  "name": "@orbs-game/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for Orbs Game Solana program",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "solana",
+    "anchor",
+    "orbs",
+    "gaming",
+    "sdk"
+  ],
+  "author": "PlayOrbs",
+  "license": "BSL-1.1",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:PlayOrbs/sdk.git"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@solana/spl-token": "^0.4.9",
+    "@solana/web3.js": "^1.95.8",
+    "bn.js": "^5.2.1",
+    "bs58": "6.0.0",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.2.0",
+    "typescript": "^5.7.2"
+  },
+  "peerDependencies": {
+    "@coral-xyz/anchor": "^0.32.0",
+    "@dfinity/agent": "^3.4.3",
+    "@dfinity/candid": "^3.4.3",
+    "@dfinity/identity": "^3.4.3",
+    "@dfinity/principal": "^3.4.3",
+    "@solana/web3.js": "^1.95.0"
+  },
+  "peerDependenciesMeta": {
+    "@dfinity/agent": {
+      "optional": true
+    },
+    "@dfinity/candid": {
+      "optional": true
+    },
+    "@dfinity/identity": {
+      "optional": true
+    },
+    "@dfinity/principal": {
+      "optional": true
+    }
+  }
+}
