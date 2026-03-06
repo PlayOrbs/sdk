@@ -101,8 +101,8 @@ export declare class FetchModule {
      */
     rounds(roundIds: number[], tierId: number): Promise<Map<number, Round>>;
     /**
-     * Fetch multiple player stats in parallel
-     * Filters out players that don't have stats
+     * Fetch multiple player stats using batch RPC call
+     * Uses getMultipleAccountsInfo for efficiency (1 RPC call instead of N)
      */
     playerStatsMultiple(players: PublicKey[], seasonId: number): Promise<Map<string, PlayerStats>>;
     /**
@@ -121,7 +121,8 @@ export declare class FetchModule {
         referralPointsEarned: BN;
     } | null>;
     /**
-     * Fetch nicknames for multiple players in parallel
+     * Fetch nicknames for multiple players using batch RPC call
+     * Uses getMultipleAccountsInfo for efficiency (1 RPC call instead of N)
      * @param players - Array of player public keys
      * @returns Map of player pubkey (base58) to nickname (empty string if no nickname set)
      */

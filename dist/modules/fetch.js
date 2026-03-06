@@ -399,15 +399,27 @@ class FetchModule {
         return rounds;
     }
     /**
-     * Fetch multiple player stats in parallel
-     * Filters out players that don't have stats
+     * Fetch multiple player stats using batch RPC call
+     * Uses getMultipleAccountsInfo for efficiency (1 RPC call instead of N)
      */
     async playerStatsMultiple(players, seasonId) {
-        const results = await Promise.allSettled(players.map((player) => this.playerStats(player, seasonId)));
+        if (players.length === 0)
+            return new Map();
+        // Derive all PDAs
+        const pdas = players.map((player) => this.accounts.playerStats(player, seasonId));
+        // Batch fetch all accounts in one RPC call
+        const accountInfos = await this.program.provider.connection.getMultipleAccountsInfo(pdas);
         const stats = new Map();
-        results.forEach((result, index) => {
-            if (result.status === "fulfilled" && result.value !== null) {
-                stats.set(players[index].toBase58(), result.value);
+        accountInfos.forEach((accountInfo, index) => {
+            if (accountInfo !== null) {
+                try {
+                    // Decode the account data using Anchor's coder
+                    const decoded = this.program.coder.accounts.decode("playerStats", accountInfo.data);
+                    stats.set(players[index].toBase58(), decoded);
+                }
+                catch (e) {
+                    // Skip accounts that fail to decode
+                }
             }
         });
         return stats;
@@ -437,17 +449,30 @@ class FetchModule {
         }
     }
     /**
-     * Fetch nicknames for multiple players in parallel
+     * Fetch nicknames for multiple players using batch RPC call
+     * Uses getMultipleAccountsInfo for efficiency (1 RPC call instead of N)
      * @param players - Array of player public keys
      * @returns Map of player pubkey (base58) to nickname (empty string if no nickname set)
      */
     async nicknames(players) {
-        const results = await Promise.allSettled(players.map((player) => this.playerProfile(player)));
+        if (players.length === 0)
+            return new Map();
+        // Derive all PDAs
+        const pdas = players.map((player) => this.accounts.playerProfile(player));
+        // Batch fetch all accounts in one RPC call
+        const accountInfos = await this.program.provider.connection.getMultipleAccountsInfo(pdas);
         const nicknames = new Map();
-        results.forEach((result, index) => {
+        accountInfos.forEach((accountInfo, index) => {
             const playerKey = players[index].toBase58();
-            if (result.status === "fulfilled" && result.value !== null) {
-                nicknames.set(playerKey, result.value.currentNickname || "");
+            if (accountInfo !== null) {
+                try {
+                    // Decode the account data using Anchor's coder
+                    const decoded = this.program.coder.accounts.decode("playerProfile", accountInfo.data);
+                    nicknames.set(playerKey, decoded.currentNickname || "");
+                }
+                catch (e) {
+                    nicknames.set(playerKey, "");
+                }
             }
             else {
                 nicknames.set(playerKey, "");
