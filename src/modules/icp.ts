@@ -490,6 +490,11 @@ const icpIdl = ({ IDL }: any) => {
       [IDL.Variant({ Ok: IDL.Vec(PlayerConfigOutputIDL), Err: IDL.Text })],  // Admin only - returns Result
       ["query"]
     ),
+    list_player_configs_consistent: IDL.Func(
+      [IDL.Nat64, IDL.Nat8],  // round_id, tier_id
+      [IDL.Variant({ Ok: IDL.Vec(PlayerConfigOutputIDL), Err: IDL.Text })],  // Admin only - #[update] for consistent read
+      []  // No "query" annotation = update call (goes through consensus)
+    ),
     list_player_configs_if_revealed: IDL.Func(
       [IDL.Nat64, IDL.Nat8],  // round_id, tier_id
       [IDL.Variant({ Ok: IDL.Vec(PlayerConfigOutputIDL), Err: IDL.Text })],  // Public - only for revealed rounds
@@ -1393,6 +1398,56 @@ export class ICPModule {
       }));
     } catch (error) {
       throw new Error(`ICP canister call failed: ${error}`);
+    }
+  }
+
+  /**
+   * List all player config records for a round - admin only (consistent read)
+   * Uses #[update] call that goes through consensus — guaranteed no replica staleness.
+   * Used by engine runner as fallback when #[query] retries fail to return all configs.
+   * @param roundId - Round ID
+   * @param tierId - Tier ID
+   * @returns Array of player config records
+   */
+  async listPlayerConfigsConsistent(roundId: number, tierId: number): Promise<{
+    playerConfigHash: Uint8Array;
+    roundId: number;
+    tierId: number;
+    playerPubkey: Uint8Array;
+    tpPreset: number;
+    spawnXQ: number;
+    spawnYQ: number;
+    spawnRotQ: number;
+    allocSplit: number;
+    allocTether: number;
+    allocPower: number;
+    createdAt: bigint;
+  }[]> {
+    await this.ensureInitialized();
+    try {
+      const result = await this.actor.list_player_configs_consistent(BigInt(roundId), tierId);
+      
+      if ("Err" in result) {
+        throw new Error(`Failed to list player configs (consistent): ${result.Err}`);
+      }
+      
+      const results = result.Ok;
+      return results.map((r: any) => ({
+        playerConfigHash: new Uint8Array(r.player_config_hash),
+        roundId: Number(r.round_id),
+        tierId: r.tier_id,
+        playerPubkey: new Uint8Array(r.player_pubkey),
+        tpPreset: r.tp_preset,
+        spawnXQ: r.spawn_x_q,
+        spawnYQ: r.spawn_y_q,
+        spawnRotQ: r.spawn_rot_q,
+        allocSplit: r.alloc_split,
+        allocTether: r.alloc_tether,
+        allocPower: r.alloc_power,
+        createdAt: r.created_at,
+      }));
+    } catch (error) {
+      throw new Error(`ICP canister call (consistent) failed: ${error}`);
     }
   }
 
