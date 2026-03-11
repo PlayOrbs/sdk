@@ -134,6 +134,144 @@ export class OrbsGameSDK {
     return 'signTransaction' in player && !('secretKey' in player);
   }
 
+  /**
+   * Resolve referral accounts for a join transaction.
+   * Chain-first: if referral PDA exists on-chain, reads the .referrer from it.
+   * Only uses referrerHint (from localStorage) for first-time initReferral.
+   *
+   * @param playerPubkey - The player joining
+   * @param playerHasStats - Whether the player has existing stats
+   * @param seasonId - Current season ID
+   * @param referrerHint - Optional referrer pubkey from localStorage (used only for initReferral)
+   */
+  private async resolveReferralAccounts(
+    playerPubkey: PublicKey,
+    playerHasStats: boolean,
+    seasonId: number,
+    referrerHint?: PublicKey,
+  ): Promise<{
+    referralPda: PublicKey | undefined;
+    referrer: PublicKey | undefined;
+    referrerStatsPda: PublicKey | undefined;
+    needsReferralInit: boolean;
+    referrerHasStats: boolean;
+    referrerHasProfile: boolean;
+  }> {
+    const result = {
+      referralPda: undefined as PublicKey | undefined,
+      referrer: undefined as PublicKey | undefined,
+      referrerStatsPda: undefined as PublicKey | undefined,
+      needsReferralInit: false,
+      referrerHasStats: false,
+      referrerHasProfile: false,
+    };
+
+    // Step 1: Check if referral PDA already exists on-chain
+    const referralPda = this.accounts.referral(playerPubkey);
+    try {
+      const referralInfo = await this.provider.connection.getAccountInfo(referralPda);
+      if (
+        referralInfo &&
+        referralInfo.owner.equals(this.program.programId) &&
+        referralInfo.data.length >= 81
+      ) {
+        // Referral exists — read the actual referrer from chain
+        // Layout: 8-byte discriminator + 32-byte player + 32-byte referrer
+        const actualReferrer = new PublicKey(referralInfo.data.slice(40, 72));
+        result.referralPda = referralPda;
+        result.referrer = actualReferrer;
+        result.needsReferralInit = false;
+
+        // Validate referrer has stats + profile for current season
+        const referrerStatsPda = this.accounts.playerStats(actualReferrer, seasonId);
+        try {
+          const statsInfo = await this.provider.connection.getAccountInfo(referrerStatsPda);
+          result.referrerHasStats = !!statsInfo;
+        } catch {
+          result.referrerHasStats = false;
+        }
+
+        if (result.referrerHasStats) {
+          result.referrerStatsPda = referrerStatsPda;
+          const referrerProfilePda = this.accounts.playerProfile(actualReferrer);
+          try {
+            const profileInfo = await this.provider.connection.getAccountInfo(referrerProfilePda);
+            result.referrerHasProfile = !!profileInfo;
+          } catch {
+            result.referrerHasProfile = false;
+          }
+        }
+
+        // If referrer lacks stats or profile, skip referral accounts (don't error)
+        if (!result.referrerHasStats || !result.referrerHasProfile) {
+          result.referralPda = undefined;
+          result.referrer = undefined;
+          result.referrerStatsPda = undefined;
+        }
+
+        return result;
+      }
+    } catch {
+      // Referral PDA doesn't exist or fetch failed
+    }
+
+    // Step 2: No existing referral — use referrerHint for initReferral
+    if (!referrerHint || !playerHasStats) return result;
+
+    result.referrer = referrerHint;
+
+    // Check referrer has stats
+    const referrerStatsPda = this.accounts.playerStats(referrerHint, seasonId);
+    try {
+      const statsInfo = await this.provider.connection.getAccountInfo(referrerStatsPda);
+      result.referrerHasStats = !!statsInfo;
+    } catch {
+      result.referrerHasStats = false;
+    }
+    if (!result.referrerHasStats) {
+      result.referrer = undefined;
+      return result;
+    }
+
+    // Check referrer has profile
+    const referrerProfilePda = this.accounts.playerProfile(referrerHint);
+    try {
+      const profileInfo = await this.provider.connection.getAccountInfo(referrerProfilePda);
+      result.referrerHasProfile = !!profileInfo;
+    } catch {
+      result.referrerHasProfile = false;
+    }
+    if (!result.referrerHasProfile) {
+      result.referrer = undefined;
+      return result;
+    }
+
+    // Referrer is valid — set up for initReferral
+    result.referralPda = referralPda;
+    result.referrerStatsPda = referrerStatsPda;
+    result.needsReferralInit = true;
+
+    // Check for circular referral
+    const referrerReferralPda = this.accounts.referral(referrerHint);
+    try {
+      const referrerReferralInfo = await this.provider.connection.getAccountInfo(referrerReferralPda);
+      if (referrerReferralInfo && referrerReferralInfo.data.length >= 72) {
+        const referrerOfReferrer = new PublicKey(referrerReferralInfo.data.slice(40, 72));
+        if (referrerOfReferrer.equals(playerPubkey)) {
+          // Circular referral — abort
+          result.needsReferralInit = false;
+          result.referralPda = undefined;
+          result.referrer = undefined;
+          result.referrerStatsPda = undefined;
+        }
+      }
+    } catch {
+      // No circular dependency
+    }
+
+    return result;
+  }
+
   // ============================================================================
   // Admin Operations
   // ============================================================================
@@ -268,62 +406,9 @@ export class OrbsGameSDK {
       playerHasStats = false;
     }
 
-    // Derive referral accounts if referrer is provided
-    let referralPda: PublicKey | undefined;
-    let referrerStatsPda: PublicKey | undefined;
-    let needsReferralInit = false;
-    let referrerHasStats = false;
-    if (referrer) {
-      referrerStatsPda = this.accounts.playerStats(referrer, rootData.seasonId);
-
-      // Check if referrer has PlayerStats (required for referral to work)
-      try {
-        const referrerStatsInfo = await this.provider.connection.getAccountInfo(referrerStatsPda);
-        referrerHasStats = !!referrerStatsInfo;
-      } catch {
-        referrerHasStats = false;
-      }
-
-      // Only proceed with referral if referrer has stats AND player has stats
-      // (first-time players don't get referral to offset PDA creation fees)
-      if (referrerHasStats && playerHasStats) {
-        referralPda = this.accounts.referral(playerPubkey);
-
-        // Check if referral PDA already exists and is initialized
-        try {
-          const referralInfo = await this.provider.connection.getAccountInfo(referralPda);
-          // Account must exist, be owned by our program, and have enough data to be a valid Referral
-          // Referral struct: 8 discriminator + 32 player + 32 referrer + 8 created_at + 1 counted = 81 bytes
-          const isValidReferral =
-            referralInfo &&
-            referralInfo.owner.equals(this.program.programId) &&
-            referralInfo.data.length >= 81;
-          needsReferralInit = !isValidReferral;
-        } catch {
-          needsReferralInit = true;
-        }
-
-        // Check for circular referral: if referrer has a referral pointing to player, skip
-        if (needsReferralInit) {
-          const referrerReferralPda = this.accounts.referral(referrer);
-          try {
-            const referrerReferralInfo =
-              await this.provider.connection.getAccountInfo(referrerReferralPda);
-            if (referrerReferralInfo && referrerReferralInfo.data.length >= 72) {
-              // Referral layout: 8-byte discriminator + 32-byte player + 32-byte referrer
-              const referrerOfReferrer = new PublicKey(referrerReferralInfo.data.slice(40, 72));
-              if (referrerOfReferrer.equals(playerPubkey)) {
-                // Circular referral detected - don't init referral
-                needsReferralInit = false;
-                referralPda = undefined;
-              }
-            }
-          } catch {
-            // Referrer has no referral account, no circular dependency
-          }
-        }
-      }
-    }
+    // Resolve referral accounts (chain-first: reads existing referral PDA, falls back to hint for init)
+    const refResult = await this.resolveReferralAccounts(playerPubkey, playerHasStats, rootData.seasonId, referrer);
+    const { referralPda, referrer: resolvedReferrer, referrerStatsPda, needsReferralInit, referrerHasStats } = refResult;
 
     // Check if round page exists and if this is the first player
     let isFirstPlayer = false;
@@ -367,25 +452,23 @@ export class OrbsGameSDK {
       );
     }
 
-    // Add initReferral instruction if referrer provided, has profile, referral PDA doesn't exist,
-    // and we're not initializing the round page (to avoid transaction size issues)
+    // Add initReferral instruction if needed and not initializing the round page (tx size)    
     let addedInitReferral = false;
     if (
-      referrer &&
+      resolvedReferrer &&
       referrerHasStats &&
       needsReferralInit &&
       referralPda &&
       !needsPageInit
     ) {
-      // Get referrer's referral PDA to check for circular referrals
-      const referrerReferralPda = this.accounts.referral(referrer);
-      const referrerProfilePda = this.accounts.playerProfile(referrer);
+      const referrerReferralPda = this.accounts.referral(resolvedReferrer);
+      const referrerProfilePda = this.accounts.playerProfile(resolvedReferrer);
       const initReferralIx = await this.program.methods
         .initReferral()
         .accounts({
           referral: referralPda,
           player: playerPubkey,
-          referrer: referrer,
+          referrer: resolvedReferrer,
           referrerProfile: referrerProfilePda,
           referrerReferral: referrerReferralPda,
           systemProgram: PROGRAM_ADDRESSES.SYSTEM_PROGRAM,
@@ -414,7 +497,7 @@ export class OrbsGameSDK {
       // Optional referral accounts - only include if referral exists or being initialized
       referral: includeReferralAccounts ? referralPda : null,
       referrerStats: includeReferralAccounts ? referrerStatsPda : null,
-      referrerProfile: includeReferralAccounts ? this.accounts.playerProfile(referrer!) : null,
+      referrerProfile: includeReferralAccounts ? this.accounts.playerProfile(resolvedReferrer!) : null,
       referralVault: includeReferralAccounts ? this.accounts.referralVault() : null,
     };
 
@@ -476,53 +559,9 @@ export class OrbsGameSDK {
       playerHasStats = false;
     }
 
-    // Derive referral accounts if referrer is provided
-    let referralPda: PublicKey | undefined;
-    let referrerStatsPda: PublicKey | undefined;
-    let needsReferralInit = false;
-    let referrerHasStats = false;
-    if (referrer) {
-      referrerStatsPda = this.accounts.playerStats(referrer, rootData.seasonId);
-
-      try {
-        const referrerStatsInfo = await this.provider.connection.getAccountInfo(referrerStatsPda);
-        referrerHasStats = !!referrerStatsInfo;
-      } catch {
-        referrerHasStats = false;
-      }
-
-      if (referrerHasStats && playerHasStats) {
-        referralPda = this.accounts.referral(playerPubkey);
-
-        try {
-          const referralInfo = await this.provider.connection.getAccountInfo(referralPda);
-          const isValidReferral =
-            referralInfo &&
-            referralInfo.owner.equals(this.program.programId) &&
-            referralInfo.data.length >= 81;
-          needsReferralInit = !isValidReferral;
-        } catch {
-          needsReferralInit = true;
-        }
-
-        if (needsReferralInit) {
-          const referrerReferralPda = this.accounts.referral(referrer);
-          try {
-            const referrerReferralInfo =
-              await this.provider.connection.getAccountInfo(referrerReferralPda);
-            if (referrerReferralInfo && referrerReferralInfo.data.length >= 72) {
-              const referrerOfReferrer = new PublicKey(referrerReferralInfo.data.slice(40, 72));
-              if (referrerOfReferrer.equals(playerPubkey)) {
-                needsReferralInit = false;
-                referralPda = undefined;
-              }
-            }
-          } catch {
-            // No circular dependency
-          }
-        }
-      }
-    }
+    // Resolve referral accounts (chain-first: reads existing referral PDA, falls back to hint for init)
+    const refResult2 = await this.resolveReferralAccounts(playerPubkey, playerHasStats, rootData.seasonId, referrer);
+    const { referralPda: referralPda2, referrer: resolvedReferrer2, referrerStatsPda: referrerStatsPda2, needsReferralInit: needsReferralInit2, referrerHasStats: referrerHasStats2 } = refResult2;
 
     // Check if round page exists
     let needsPageInit = false;
@@ -560,20 +599,20 @@ export class OrbsGameSDK {
 
     let addedInitReferral = false;
     if (
-      referrer &&
-      referrerHasStats &&
-      needsReferralInit &&
-      referralPda &&
+      resolvedReferrer2 &&
+      referrerHasStats2 &&
+      needsReferralInit2 &&
+      referralPda2 &&
       !needsPageInit
     ) {
-      const referrerReferralPda = this.accounts.referral(referrer);
-      const referrerProfilePda = this.accounts.playerProfile(referrer);
+      const referrerReferralPda = this.accounts.referral(resolvedReferrer2);
+      const referrerProfilePda = this.accounts.playerProfile(resolvedReferrer2);
       const initReferralIx = await this.program.methods
         .initReferral()
         .accounts({
-          referral: referralPda,
+          referral: referralPda2,
           player: playerPubkey,
-          referrer: referrer,
+          referrer: resolvedReferrer2,
           referrerProfile: referrerProfilePda,
           referrerReferral: referrerReferralPda,
           systemProgram: PROGRAM_ADDRESSES.SYSTEM_PROGRAM,
@@ -584,7 +623,7 @@ export class OrbsGameSDK {
     }
 
     const includeReferralAccounts =
-      referrerHasStats && referralPda && (!needsReferralInit || addedInitReferral);
+      referrerHasStats2 && referralPda2 && (!needsReferralInit2 || addedInitReferral);
 
     // Convert playerConfigHash to array if needed
     const configHashArray = Array.from(playerConfigHash);
@@ -601,9 +640,9 @@ export class OrbsGameSDK {
       joinAuthority: joinAuthority.publicKey,
       systemProgram: PROGRAM_ADDRESSES.SYSTEM_PROGRAM,
       tokenProgram: PROGRAM_ADDRESSES.TOKEN_PROGRAM,
-      referral: includeReferralAccounts ? referralPda : null,
-      referrerStats: includeReferralAccounts ? referrerStatsPda : null,
-      referrerProfile: includeReferralAccounts ? this.accounts.playerProfile(referrer!) : null,
+      referral: includeReferralAccounts ? referralPda2 : null,
+      referrerStats: includeReferralAccounts ? referrerStatsPda2 : null,
+      referrerProfile: includeReferralAccounts ? this.accounts.playerProfile(resolvedReferrer2!) : null,
       referralVault: includeReferralAccounts ? this.accounts.referralVault() : null,
     };
 
@@ -665,66 +704,9 @@ export class OrbsGameSDK {
       playerHasStats = false;
     }
 
-    // Derive referral accounts if referrer is provided
-    let referralPda: PublicKey | undefined;
-    let referrerStatsPda: PublicKey | undefined;
-    let needsReferralInit = false;
-    let referrerHasStats = false;
-    if (referrer) {
-      referrerStatsPda = this.accounts.playerStats(referrer, rootData.seasonId);
-
-      try {
-        const referrerStatsInfo = await this.provider.connection.getAccountInfo(referrerStatsPda);
-        referrerHasStats = !!referrerStatsInfo;
-      } catch {
-        referrerHasStats = false;
-      }
-
-      // Also check if referrer has a PlayerProfile (required by initReferral)
-      let referrerHasProfile = false;
-      if (referrerHasStats) {
-        const referrerProfilePda = this.accounts.playerProfile(referrer);
-        try {
-          const profileInfo = await this.provider.connection.getAccountInfo(referrerProfilePda);
-          referrerHasProfile = !!profileInfo;
-        } catch {
-          referrerHasProfile = false;
-        }
-      }
-
-      if (referrerHasStats && referrerHasProfile && playerHasStats) {
-        referralPda = this.accounts.referral(playerPubkey);
-
-        try {
-          const referralInfo = await this.provider.connection.getAccountInfo(referralPda);
-          const isValidReferral =
-            referralInfo &&
-            referralInfo.owner.equals(this.program.programId) &&
-            referralInfo.data.length >= 81;
-          needsReferralInit = !isValidReferral;
-        } catch {
-          needsReferralInit = true;
-        }
-
-        // Check for circular referral
-        if (needsReferralInit) {
-          const referrerReferralPda = this.accounts.referral(referrer);
-          try {
-            const referrerReferralInfo =
-              await this.provider.connection.getAccountInfo(referrerReferralPda);
-            if (referrerReferralInfo && referrerReferralInfo.data.length >= 72) {
-              const referrerOfReferrer = new PublicKey(referrerReferralInfo.data.slice(40, 72));
-              if (referrerOfReferrer.equals(playerPubkey)) {
-                needsReferralInit = false;
-                referralPda = undefined;
-              }
-            }
-          } catch {
-            // No circular dependency
-          }
-        }
-      }
-    }
+    // Resolve referral accounts (chain-first: reads existing referral PDA, falls back to hint for init)
+    const refResult3 = await this.resolveReferralAccounts(playerPubkey, playerHasStats, rootData.seasonId, referrer);
+    const { referralPda: referralPda3, referrer: resolvedReferrer3, referrerStatsPda: referrerStatsPda3, needsReferralInit: needsReferralInit3, referrerHasStats: referrerHasStats3 } = refResult3;
 
     // Check if round page exists
     let needsPageInit = false;
@@ -764,20 +746,20 @@ export class OrbsGameSDK {
     // Add initReferral instruction if needed
     let addedInitReferral = false;
     if (
-      referrer &&
-      referrerHasStats &&
-      needsReferralInit &&
-      referralPda &&
+      resolvedReferrer3 &&
+      referrerHasStats3 &&
+      needsReferralInit3 &&
+      referralPda3 &&
       !needsPageInit
     ) {
-      const referrerReferralPda = this.accounts.referral(referrer);
-      const referrerProfilePda = this.accounts.playerProfile(referrer);
+      const referrerReferralPda = this.accounts.referral(resolvedReferrer3);
+      const referrerProfilePda = this.accounts.playerProfile(resolvedReferrer3);
       const initReferralIx = await this.program.methods
         .initReferral()
         .accounts({
-          referral: referralPda,
+          referral: referralPda3,
           player: playerPubkey,
-          referrer: referrer,
+          referrer: resolvedReferrer3,
           referrerProfile: referrerProfilePda,
           referrerReferral: referrerReferralPda,
           systemProgram: PROGRAM_ADDRESSES.SYSTEM_PROGRAM,
@@ -788,7 +770,7 @@ export class OrbsGameSDK {
     }
 
     const includeReferralAccounts =
-      referrerHasStats && referralPda && (!needsReferralInit || addedInitReferral);
+      referrerHasStats3 && referralPda3 && (!needsReferralInit3 || addedInitReferral);
 
     // Convert playerConfigHash to array if needed
     const configHashArray = Array.from(playerConfigHash);
@@ -805,9 +787,9 @@ export class OrbsGameSDK {
       joinAuthority: joinAuthority.publicKey,
       systemProgram: PROGRAM_ADDRESSES.SYSTEM_PROGRAM,
       tokenProgram: PROGRAM_ADDRESSES.TOKEN_PROGRAM,
-      referral: includeReferralAccounts ? referralPda : null,
-      referrerStats: includeReferralAccounts ? referrerStatsPda : null,
-      referrerProfile: includeReferralAccounts ? this.accounts.playerProfile(referrer!) : null,
+      referral: includeReferralAccounts ? referralPda3 : null,
+      referrerStats: includeReferralAccounts ? referrerStatsPda3 : null,
+      referrerProfile: includeReferralAccounts ? this.accounts.playerProfile(resolvedReferrer3!) : null,
       referralVault: includeReferralAccounts ? this.accounts.referralVault() : null,
     };
 
