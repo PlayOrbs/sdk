@@ -127,6 +127,7 @@ export interface RoundSnapshot {
   players: RoundPlayerSnapshot[];  // BTreeSet serializes as array in Candid
   did_emit: boolean;  // Whether ORB emission occurred for this round
   config_version: string;  // Engine config version used for this round (e.g., "1.2.2")
+  payout_model?: string;  // Payout model: "v1_inherit" or "v2_top3" (missing on old snapshots)
 }
 
 export interface RoundSnapshotPage {
@@ -256,6 +257,7 @@ const icpIdl = ({ IDL }: any) => {
     did_emit: IDL.Bool,
     emit_tx_sig: IDL.Opt(IDL.Text), // Solana tx signature for ORB mint
     config_version: IDL.Text, // Engine config version used for this round
+    payout_model: IDL.Text, // Payout model: "v1_inherit" or "v2_top3"
   });
 
   const RoundSnapshotPage = IDL.Record({
