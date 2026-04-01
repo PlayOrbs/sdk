@@ -8,8 +8,8 @@ import { FeeBreakdown, PointsBreakdown } from "../types";
 
 /**
  * Calculate fee distribution
- * Logic: Combine entry + TP, split 80% to pot and 20% to fees
- * Fee split: 10% to LP, 10% to dev (of total payment)
+ * Logic: Combine entry + TP, split 85% to pot and 15% to fees
+ * Fee split: ~7.5% to LP, ~7.5% to dev (of total payment)
  * LP accumulation happens always (pre and post genesis)
  */
 export function calculateFees(
@@ -20,12 +20,11 @@ export function calculateFees(
   // Combine entry + TP fee for unified calculation
   const totalPayment = entryLamports + takeProfitLamports;
   
-  // Split total: 80% to pot, 20% to fees
-  const toPot = Math.floor(totalPayment * 0.8);
+  // Split total: 85% to pot, 15% to fees (matches join_round_v2.rs)
+  const toPot = Math.floor(totalPayment * 0.85);
   const toFees = totalPayment - toPot;
   
-  // Fee split: 50% to LP, 50% to dev (of the 20% fee portion)
-  // This means: 10% of total goes to LP, 10% of total goes to dev
+  // Fee split: 50% to LP, 50% to dev (of the 15% fee portion)
   const lpAccum = Math.floor(toFees / 2);
   const devFee = toFees - lpAccum;
   const actualDev = devFee; // Dev gets full portion (referral comes from this if applicable)
