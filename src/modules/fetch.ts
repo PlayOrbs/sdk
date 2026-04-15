@@ -3,7 +3,7 @@
  * Handles account fetching with type safety and error handling
  */
 
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, AccountInfo } from "@solana/web3.js";
 import { Program, BN } from "@coral-xyz/anchor";
 import bs58 from "bs58";
 import { AccountsModule } from "./accounts";
@@ -512,8 +512,8 @@ export class FetchModule {
     // Derive all PDAs
     const pdas = players.map((player) => this.accounts.playerStats(player, seasonId));
 
-    // Batch fetch all accounts in one RPC call
-    const accountInfos = await this.program.provider.connection.getMultipleAccountsInfo(pdas);
+    // Solana RPC caps getMultipleAccountsInfo at 100 keys per request — chunk.
+    const accountInfos = await this.getMultipleAccountsInfoChunked(pdas);
 
     const stats = new Map<string, PlayerStats>();
     accountInfos.forEach((accountInfo, index) => {
@@ -532,6 +532,30 @@ export class FetchModule {
     });
 
     return stats;
+  }
+
+  /**
+   * Wrapper around connection.getMultipleAccountsInfo that respects the
+   * Solana RPC 100-key-per-request cap by fanning out chunked requests in
+   * parallel and concatenating the results in original order.
+   */
+  private async getMultipleAccountsInfoChunked(
+    pdas: PublicKey[],
+  ): Promise<(AccountInfo<Buffer> | null)[]> {
+    const MAX_KEYS_PER_REQUEST = 100;
+    if (pdas.length <= MAX_KEYS_PER_REQUEST) {
+      return this.program.provider.connection.getMultipleAccountsInfo(pdas);
+    }
+    const chunks: PublicKey[][] = [];
+    for (let i = 0; i < pdas.length; i += MAX_KEYS_PER_REQUEST) {
+      chunks.push(pdas.slice(i, i + MAX_KEYS_PER_REQUEST));
+    }
+    const results = await Promise.all(
+      chunks.map((chunk) =>
+        this.program.provider.connection.getMultipleAccountsInfo(chunk),
+      ),
+    );
+    return results.flat();
   }
 
   /**
@@ -581,8 +605,8 @@ export class FetchModule {
     // Derive all PDAs
     const pdas = players.map((player) => this.accounts.playerProfile(player));
 
-    // Batch fetch all accounts in one RPC call
-    const accountInfos = await this.program.provider.connection.getMultipleAccountsInfo(pdas);
+    // Chunk to respect Solana RPC 100-key-per-request cap.
+    const accountInfos = await this.getMultipleAccountsInfoChunked(pdas);
 
     const nicknames = new Map<string, string>();
     accountInfos.forEach((accountInfo, index) => {
