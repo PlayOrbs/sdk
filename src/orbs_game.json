@@ -445,59 +445,6 @@
       ]
     },
     {
-      "name": "admin_set_orb_mint",
-      "docs": [
-        "Update the ORB mint address (devnet only)",
-        "Authority-only instruction to fix mint authority issues"
-      ],
-      "discriminator": [
-        131,
-        109,
-        250,
-        152,
-        26,
-        32,
-        236,
-        245
-      ],
-      "accounts": [
-        {
-          "name": "root_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  111,
-                  111,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "authority",
-          "docs": [
-            "Authority that can modify game configuration"
-          ],
-          "signer": true,
-          "relations": [
-            "root_account"
-          ]
-        },
-        {
-          "name": "new_orb_mint",
-          "docs": [
-            "New ORB mint"
-          ]
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "admin_set_paused",
       "docs": [
         "Set the paused flag (emergency pause for fund-moving instructions)",
@@ -601,73 +548,6 @@
           "type": "u32"
         }
       ]
-    },
-    {
-      "name": "admin_sync_lp_accum",
-      "docs": [
-        "Sync lp_accum_sol to match actual LP vault balance (devnet only)",
-        "This allows manual funding of LP vault to count towards genesis threshold"
-      ],
-      "discriminator": [
-        64,
-        127,
-        195,
-        44,
-        151,
-        247,
-        124,
-        0
-      ],
-      "accounts": [
-        {
-          "name": "root_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  111,
-                  111,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "lp_vault",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  108,
-                  112,
-                  95,
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "authority",
-          "docs": [
-            "Authority that can modify game configuration"
-          ],
-          "signer": true,
-          "relations": [
-            "root_account"
-          ]
-        }
-      ],
-      "args": []
     },
     {
       "name": "admin_update_tier",
@@ -848,7 +728,7 @@
         },
         {
           "name": "raydium_clmm_program",
-          "address": "DRayAUgENGQBKVaX8owNhgzkEDyoHTGVEGHVJT1E9pfH"
+          "address": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK"
         },
         {
           "name": "authority",
@@ -1835,7 +1715,7 @@
         },
         {
           "name": "raydium_program",
-          "address": "DRayAUgENGQBKVaX8owNhgzkEDyoHTGVEGHVJT1E9pfH"
+          "address": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK"
         },
         {
           "name": "authority",
@@ -3081,7 +2961,7 @@
         },
         {
           "name": "raydium_lock_program",
-          "address": "DRay25Usp3YJAi7beckgpGUC7mGJ2cR1AVPxhYfwVCUX"
+          "address": "LockrWmn6K5twhz3y9w1dQERbmgSaRkfnTeTKbpofwE"
         },
         {
           "name": "authority",
@@ -3233,7 +3113,7 @@
         },
         {
           "name": "raydium_program",
-          "address": "DRayAUgENGQBKVaX8owNhgzkEDyoHTGVEGHVJT1E9pfH"
+          "address": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK"
         },
         {
           "name": "authority",
@@ -3950,6 +3830,139 @@
       "args": []
     },
     {
+      "name": "transfer_referral",
+      "docs": [
+        "Transfer a referral to a new referrer",
+        "The old referrer signs to reassign a single referee to a new referrer"
+      ],
+      "discriminator": [
+        247,
+        237,
+        42,
+        183,
+        178,
+        214,
+        70,
+        227
+      ],
+      "accounts": [
+        {
+          "name": "referral",
+          "docs": [
+            "The referral account to transfer",
+            "PDA: [\"referral\", referral.player]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  102,
+                  101,
+                  114,
+                  114,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "referral.player",
+                "account": "Referral"
+              }
+            ]
+          }
+        },
+        {
+          "name": "old_referrer",
+          "docs": [
+            "The current referrer (must sign to authorize transfer)"
+          ],
+          "signer": true
+        },
+        {
+          "name": "new_referrer",
+          "docs": [
+            "The new referrer to assign"
+          ]
+        },
+        {
+          "name": "old_referrer_profile",
+          "docs": [
+            "Old referrer's PlayerProfile (to decrement referral_count)",
+            "PDA: [\"player_profile\", old_referrer]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114,
+                  95,
+                  112,
+                  114,
+                  111,
+                  102,
+                  105,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "old_referrer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "new_referrer_profile",
+          "docs": [
+            "New referrer's PlayerProfile (to increment referral_count)",
+            "PDA: [\"player_profile\", new_referrer]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114,
+                  95,
+                  112,
+                  114,
+                  111,
+                  102,
+                  105,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "new_referrer"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "update_player_stats",
       "discriminator": [
         61,
@@ -4015,10 +4028,15 @@
         },
         {
           "name": "authority",
+          "writable": true,
           "signer": true,
           "relations": [
             "root_account"
           ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -4043,130 +4061,6 @@
           }
         }
       ]
-    },
-    {
-      "name": "withdraw_lp_vault",
-      "docs": [
-        "Emergency withdraw all SOL from LP vault",
-        "Authority-only instruction to recover funds - devnet only"
-      ],
-      "discriminator": [
-        98,
-        1,
-        149,
-        166,
-        190,
-        178,
-        88,
-        113
-      ],
-      "accounts": [
-        {
-          "name": "root_account",
-          "docs": [
-            "Root account PDA - canonical game state"
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  111,
-                  111,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "vault_authority",
-          "docs": [
-            "Vault authority PDA (signs transfers)"
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "lp_vault",
-          "docs": [
-            "LP vault - WSOL TokenAccount to withdraw from"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  108,
-                  112,
-                  95,
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "destination",
-          "docs": [
-            "Destination for withdrawn SOL (authority's wallet)"
-          ],
-          "writable": true
-        },
-        {
-          "name": "authority",
-          "docs": [
-            "Authority that can withdraw (must match root_account.authority)"
-          ],
-          "signer": true,
-          "relations": [
-            "root_account"
-          ]
-        },
-        {
-          "name": "token_program",
-          "docs": [
-            "Token program for WSOL operations"
-          ],
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "system_program",
-          "docs": [
-            "System program for closing account"
-          ],
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
     }
   ],
   "accounts": [
@@ -5168,6 +5062,22 @@
               "Current consecutive win streak (reset on non-win)"
             ],
             "type": "u16"
+          },
+          {
+            "name": "last_active_utc_day",
+            "docs": [
+              "UTC day (days since unix epoch) of last settled round.",
+              "0 means never played; u16 fits until year 2149."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "daily_play_streak",
+            "docs": [
+              "Current consecutive daily-play streak in UTC days.",
+              "Reset to 1 when the player misses a day."
+            ],
+            "type": "u16"
           }
         ]
       }
@@ -5332,6 +5242,10 @@
         "fields": [
           {
             "name": "dev_fee_bps",
+            "docs": [
+              "Legacy field — no longer used by join_round_v2 which hardcodes an 85/15 split (1500 bps).",
+              "Kept for ABI compatibility. The frontend ignores this value for pool calculations."
+            ],
             "type": "u16"
           },
           {
