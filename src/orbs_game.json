@@ -2990,6 +2990,64 @@
       ]
     },
     {
+      "name": "migrate_player_stats",
+      "docs": [
+        "One-shot migration: grow legacy PlayerStats accounts up to the new",
+        "`PlayerStats::SPACE` so the trailing `last_active_utc_day` +",
+        "`daily_play_streak` fields deserialize. Idempotent, authority-gated,",
+        "works directly on the PlayerStats PDA — no season/player args needed."
+      ],
+      "discriminator": [
+        96,
+        209,
+        44,
+        229,
+        146,
+        12,
+        180,
+        3
+      ],
+      "accounts": [
+        {
+          "name": "root_account",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  111,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_stats",
+          "docs": [
+            "the handler. Skips the typed `Account` wrapper since the on-disk size",
+            "mismatch is the whole reason we're here."
+          ],
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "root_account"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "open_position",
       "discriminator": [
         135,
@@ -4028,15 +4086,10 @@
         },
         {
           "name": "authority",
-          "writable": true,
           "signer": true,
           "relations": [
             "root_account"
           ]
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
