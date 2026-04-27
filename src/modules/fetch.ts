@@ -3,7 +3,7 @@
  * Handles account fetching with type safety and error handling
  */
 
-import { PublicKey, AccountInfo } from "@solana/web3.js";
+import { PublicKey, AccountInfo, Commitment } from "@solana/web3.js";
 import { Program, BN } from "@coral-xyz/anchor";
 import bs58 from "bs58";
 import { AccountsModule } from "./accounts";
@@ -320,6 +320,7 @@ export class FetchModule {
   async fetchRoundRosterV2(
     tierId: number,
     roundId: BN | number,
+    commitment: Commitment = 'confirmed',
   ): Promise<RoundPlayerV2[]> {
     const roundIdBn = typeof roundId === "number" ? new BN(roundId) : roundId;
     const tierIdBytes = Buffer.from([tierId]);
@@ -327,7 +328,7 @@ export class FetchModule {
 
     try {
       // Step 1: Get pubkeys only using dataSlice
-      const pubkeys = await this.fetchRoundRosterV2Pubkeys(tierIdBytes, roundIdBytes);
+      const pubkeys = await this.fetchRoundRosterV2Pubkeys(tierIdBytes, roundIdBytes, 3, commitment);
       
       if (pubkeys.length === 0) {
         return [];
@@ -385,19 +386,21 @@ export class FetchModule {
     tierIdBytes: Buffer,
     roundIdBytes: Buffer,
     maxRetries = 3,
+    commitment: Commitment = 'confirmed',
   ): Promise<PublicKey[]> {
     const connection = this.program.provider.connection;
     const programId = this.program.programId;
-    
+
     // Get the discriminator for RoundPlayerV2 account
     // Anchor uses first 8 bytes of sha256("account:RoundPlayerV2")
     const discriminator = Buffer.from([
       0xa2, 0xd1, 0x23, 0x78, 0x52, 0xba, 0x51, 0xf1
     ]);
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const accounts = await connection.getProgramAccounts(programId, {
+          commitment,
           dataSlice: { offset: 0, length: 0 },
           filters: [
             {
