@@ -1382,7 +1382,6 @@ export class OrbsGameSDK {
         rootAccount,
         roundPage: roundPagePda,
         authority: authority.publicKey,
-        systemProgram: PROGRAM_ADDRESSES.SYSTEM_PROGRAM,
       })
       .remainingAccounts(remainingAccounts)
       .transaction();
