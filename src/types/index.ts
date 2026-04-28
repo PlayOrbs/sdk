@@ -238,6 +238,10 @@ export interface PlayerStats {
   lastWinRoundId: BN;
   /** Current consecutive win streak (reset on non-win) */
   winStreak: number;
+  /** UTC day (days since unix epoch) of last settled round; 0 means never. */
+  lastActiveUtcDay: number;
+  /** Current consecutive daily-play streak in UTC days (reset on missed day). */
+  dailyPlayStreak: number;
 }
 
 /**
