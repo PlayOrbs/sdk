@@ -712,8 +712,13 @@ export class ICPModule {
   }
 
   /**
-   * Emergency refresh: Clear all chunks for a tier and regenerate (admin only)
-   * Note: season_id removed - round IDs are globally unique per tier.
+   * Emergency refresh: regenerate the CURRENT chunk for a tier (admin only).
+   *
+   * **Dangerous** - destroys outstanding seed derivations and any reveal proof
+   * pinned to the previous CURRENT chunk. Use only when CURRENT is corrupt or
+   * during fresh-deployment chunk reset. NEXT-slot maintenance is handled
+   * automatically inside reveal_seed; no operator-facing endpoint for it.
+   *
    * @param tierId - Tier ID
    * @param roundId - Round ID to regenerate from
    */
@@ -727,7 +732,7 @@ export class ICPModule {
         tierId,
         BigInt(roundId)
       );
-      
+
       if ("Err" in result) {
         throw new Error(`Failed to refresh chunks: ${result.Err}`);
       }
