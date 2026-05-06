@@ -38,6 +38,12 @@ export const SeasonalCheckpoint = {
   HOT_STREAK: 6,
   /** Legendary: 10 consecutive paid-round wins (3000 pts) */
   LEGENDARY: 7,
+  /** Play Streak 5: 5 consecutive UTC days with a settled round */
+  PLAY_STREAK_5: 10,
+  /** Play Streak 10: 10 consecutive UTC days with a settled round */
+  PLAY_STREAK_10: 11,
+  /** Play Streak 20: 20 consecutive UTC days with a settled round */
+  PLAY_STREAK_20: 12,
 } as const;
 
 /** Points awarded for each checkpoint */
@@ -58,6 +64,9 @@ export const CheckpointPoints = {
   KILLING_SPREE: 300,
   HOT_STREAK: 450,
   LEGENDARY: 1800,
+  PLAY_STREAK_5: 5_000,
+  PLAY_STREAK_10: 12_000,
+  PLAY_STREAK_20: 30_000,
 } as const;
 
 /** Checkpoint info with name, description, and points */
@@ -185,6 +194,30 @@ export const CHECKPOINTS: CheckpointInfo[] = [
     points: CheckpointPoints.LEGENDARY,
     type: 'seasonal',
     bit: SeasonalCheckpoint.LEGENDARY,
+  },
+  {
+    id: 'PLAY_STREAK_5',
+    name: 'Play Streak 5',
+    description: 'Settle a round on 5 consecutive UTC days',
+    points: CheckpointPoints.PLAY_STREAK_5,
+    type: 'seasonal',
+    bit: SeasonalCheckpoint.PLAY_STREAK_5,
+  },
+  {
+    id: 'PLAY_STREAK_10',
+    name: 'Play Streak 10',
+    description: 'Settle a round on 10 consecutive UTC days',
+    points: CheckpointPoints.PLAY_STREAK_10,
+    type: 'seasonal',
+    bit: SeasonalCheckpoint.PLAY_STREAK_10,
+  },
+  {
+    id: 'PLAY_STREAK_20',
+    name: 'Play Streak 20',
+    description: 'Settle a round on 20 consecutive UTC days',
+    points: CheckpointPoints.PLAY_STREAK_20,
+    type: 'seasonal',
+    bit: SeasonalCheckpoint.PLAY_STREAK_20,
   },
 ];
 
